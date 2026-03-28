@@ -55,6 +55,7 @@
             <button onclick="continueOffline()" class="w-full mt-5 text-sm font-medium text-slate-400 hover:text-indigo-500 transition-colors underline">
                 Continue Offline (Local Storage)
             </button>
+            <div id="login-error-msg" class="mt-4 text-xs text-rose-500 font-medium hidden text-left bg-rose-50 p-3 rounded-lg border border-rose-100"></div>
         </div>
     </div>
 
@@ -517,15 +518,18 @@
         }
 
         window.signInWithGoogle = async () => {
+            const errorEl = document.getElementById('login-error-msg');
+            errorEl.classList.add('hidden');
             try {
                 await signInWithPopup(auth, provider);
             } catch (e) {
                 console.error("Firebase Login Full Error:", e);
                 let msg = e.message;
-                if (e.code === 'auth/network-request-failed') msg = "Network/API Key blocked. Check your Google Cloud 'Identity Toolkit API' and Referrers.";
-                if (e.code === 'auth/unauthorized-domain') msg = "Domain not authorized. Add your GitHub link to Firebase Console > Authentication > Settings > Authorized Domains.";
+                if (e.code === 'auth/network-request-failed') msg = "Network/API Key blocked. Go to Google Cloud Console > Credentials and add 'my-finance-tracker-3ecf3.firebaseapp.com/*' to your API Key Restrictions.";
+                if (e.code === 'auth/unauthorized-domain') msg = "This domain is not authorized. Add 'unityinsurancebroker.github.io' to Firebase Console > Authentication > Settings > Authorized Domains.";
                 
-                alert(`Sign in failed: ${msg}`);
+                errorEl.innerText = msg;
+                errorEl.classList.remove('hidden');
             }
         };
 
