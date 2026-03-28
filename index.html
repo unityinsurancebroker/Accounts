@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance Tracker - Cloud Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+        
+        body { 
+            font-family: 'Outfit', sans-serif; 
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%, #f3f4f6 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+        
+        /* Glassmorphism Utilities */
+        .glass { background: rgba(255, 255, 255, 0.55); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 8px 32px 0 rgba(148, 163, 184, 0.1); }
+        .glass-panel { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.9); box-shadow: 0 10px 40px -10px rgba(0,0,0,0.05); border-radius: 1.5rem; }
+        .glass-active { background: rgba(255, 255, 255, 0.95); border: 1px solid rgba(99, 102, 241, 0.3); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.1); }
+        .glass-input { background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(203, 213, 225, 0.5); transition: all 0.3s ease; }
+        .glass-input:focus { background: rgba(255, 255, 255, 0.95); border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2); }
+
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.7); }
+        
+        @media print {
+            body { background: white; }
+            .no-print { display: none !important; }
+            .glass, .glass-panel { background: white; border: 1px solid #ddd; box-shadow: none; backdrop-filter: none; }
+            #reportModal { position: absolute; inset: 0; background: white; flex-direction: column; display: block; z-index: 9999; }
+            .modal-content { box-shadow: none; max-width: 100%; margin: 0; padding: 0; background: white; backdrop-filter: none; }
+        }
+    </style>
+</head>
+<body class="text-slate-700 antialiased pb-20 selection:bg-indigo-100 selection:text-indigo-900 relative">
+
+    <!-- Auth / Login Screen Overlay -->
+    <div id="auth-screen" class="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-xl flex flex-col items-center justify-center hidden">
+        <div class="glass-panel p-10 max-w-sm w-full mx-4 text-center bg-white/90">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200 mx-auto mb-6">
+                <i class="fas fa-wallet text-2xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-slate-800 mb-2">Finance Tracker</h1>
+            <p class="text-slate-500 mb-8 text-sm">Sign in to sync your expenses across your phone and PC.</p>
+            <button onclick="signInWithGoogle()" class="w-full bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-xl font-bold hover:bg-slate-50 hover:shadow-md transition-all flex items-center justify-center gap-3">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5" alt="Google"> 
+                Sign in with Google
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 glass text-slate-800 px-6 py-3 rounded-full font-medium text-sm transition-all duration-300 translate-y-[-150%] opacity-0 z-50 flex items-center gap-2 border border-emerald-200">
+        <i class="fas fa-check-circle text-emerald-500"></i>
+        <span id="toastMsg">Action successful!</span>
+    </div>
+
+    <div class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- Top Bar (Brand & Live Rate) -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 px-2">
+            <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200">
+                    <i class="fas fa-wallet text-lg"></i>
+                </div>
+                Finance Tracker
+                <span id="cloud-status" class="text-xs bg-indigo-50 border border-indigo-200 text-indigo-600 px-2 py-1 rounded-full font-bold hidden ml-2"><i class="fas fa-cloud"></i> Synced</span>
+            </h1>
+            
+            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                <button onclick="logOut()" id="logout-btn" class="hidden glass px-4 py-2 rounded-full text-slate-500 hover:text-rose-500 hover:bg-rose-50 transition-all text-sm font-bold">
+                    Logout
+                </button>
+                <button onclick="setupReminder()" class="glass w-10 h-10 flex items-center justify-center rounded-full text-amber-500 hover:bg-amber-50 hover:text-amber-600 transition-all shadow-sm border-amber-200/50" title="Set Daily 11 PM Reminder">
+                    <i class="fas fa-bell"></i>
+                </button>
+                <div class="glass px-4 py-2 rounded-full flex items-center gap-3 text-sm font-medium text-slate-600">
+                    <div class="flex items-center gap-1.5 text-indigo-600">
+                        <i class="fas fa-sync-alt animate-spin-slow text-xs" id="rate-spinner"></i>
+                        <i class="fas fa-globe text-xs hidden" id="rate-icon"></i>
+                        Rate:
+                    </div>
+                    <span id="live-rate" class="font-bold tracking-wide">Fetching...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls Header -->
+        <header class="glass-panel p-4 md:p-6 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3 w-full md:w-auto">
+                <div class="relative w-full md:w-auto">
+                    <i class="fas fa-calendar-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
+                    <input type="month" id="monthSelector" class="glass-input w-full pl-10 pr-4 py-2.5 rounded-xl text-slate-700 outline-none font-medium cursor-pointer" onchange="changeMonth(this.value)">
+                </div>
+            </div>
+            <div class="flex gap-3 w-full md:w-auto">
+                <button onclick="saveData()" class="flex-1 md:flex-none bg-white/80 hover:bg-white text-indigo-600 border border-indigo-100 px-6 py-2.5 rounded-xl font-semibold shadow-sm transition-all flex items-center justify-center gap-2">
+                    <i class="fas fa-cloud-upload-alt"></i> Save & Sync
+                </button>
+                <button onclick="generateReport()" class="flex-1 md:flex-none bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 text-white px-6 py-2.5 rounded-xl font-semibold shadow-md shadow-emerald-200 transition-all flex items-center justify-center gap-2 border border-emerald-400/50">
+                    <i class="fas fa-file-invoice"></i> Report
+                </button>
+            </div>
+        </header>
+
+        <!-- Tabs Navigation -->
+        <div class="flex gap-2 mb-6 overflow-x-auto custom-scrollbar pb-2 px-1">
+            <button onclick="showTab('tab-dashboard')" class="tab-btn glass-active text-indigo-600 font-semibold px-6 py-3 rounded-xl whitespace-nowrap transition-all flex items-center gap-2 shadow-sm"><i class="fas fa-chart-pie"></i> Dashboard</button>
+            <button onclick="showTab('tab-fixed')" class="tab-btn glass text-slate-500 hover:text-slate-700 px-6 py-3 rounded-xl whitespace-nowrap transition-all flex items-center gap-2"><i class="fas fa-home"></i> Fixed Costs</button>
+            <button onclick="showTab('tab-emis')" class="tab-btn glass text-slate-500 hover:text-slate-700 px-6 py-3 rounded-xl whitespace-nowrap transition-all flex items-center gap-2"><i class="fas fa-money-check"></i> EMIs & Loans</button>
+            <button onclick="showTab('tab-creditcards')" class="tab-btn glass text-slate-500 hover:text-slate-700 px-6 py-3 rounded-xl whitespace-nowrap transition-all flex items-center gap-2"><i class="fas fa-credit-card"></i> Credit Cards</button>
+            <button onclick="showTab('tab-foreclosures')" class="tab-btn glass text-slate-500 hover:text-slate-700 px-6 py-3 rounded-xl whitespace-nowrap transition-all flex items-center gap-2"><i class="fas fa-bullseye"></i> Foreclosures</button>
+            <button onclick="showTab('tab-daily')" class="tab-btn glass text-slate-500 hover:text-slate-700 px-6 py-3 rounded-xl whitespace-nowrap transition-all flex items-center gap-2"><i class="fas fa-receipt"></i> Daily Spend</button>
+            <button onclick="showTab('tab-balances')" class="tab-btn glass text-slate-500 hover:text-slate-700 px-6 py-3 rounded-xl whitespace-nowrap transition-all flex items-center gap-2"><i class="fas fa-piggy-bank"></i> Balances</button>
+        </div>
+
+        <!-- ================= TAB: DASHBOARD ================= -->
+        <div id="tab-dashboard" class="tab-content block space-y-8 animate-fade-in">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Income -->
+                <div class="glass-panel p-6 relative overflow-hidden group cursor-pointer hover:-translate-y-1 hover:shadow-xl transition-all duration-300" onclick="showDetails('income')">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-emerald-400/20 rounded-full blur-2xl group-hover:bg-emerald-400/30 transition-all"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2"><i class="fas fa-arrow-down text-emerald-500"></i> Total Income</h3>
+                        <i class="fas fa-info-circle text-slate-300 group-hover:text-emerald-400 transition-colors"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-slate-800" id="disp-income-aed">AED 0.00</p>
+                    <p class="text-sm font-medium text-emerald-600 mt-1" id="disp-income-inr">₹ 0.00</p>
+                </div>
+
+                <!-- Outflow -->
+                <div class="glass-panel p-6 relative overflow-hidden group cursor-pointer hover:-translate-y-1 hover:shadow-xl transition-all duration-300" onclick="showDetails('outflow')">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-rose-400/20 rounded-full blur-2xl group-hover:bg-rose-400/30 transition-all"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2"><i class="fas fa-arrow-up text-rose-500"></i> Total Outflow</h3>
+                        <i class="fas fa-info-circle text-slate-300 group-hover:text-rose-400 transition-colors"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-slate-800" id="disp-expense-aed">AED 0.00</p>
+                    <p class="text-sm font-medium text-rose-600 mt-1" id="disp-expense-inr">₹ 0.00</p>
+                </div>
+
+                <!-- Balance -->
+                <div class="glass-panel p-6 relative overflow-hidden group cursor-pointer hover:-translate-y-1 hover:shadow-xl transition-all duration-300" id="card-balance" onclick="showDetails('balance')">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-indigo-400/20 rounded-full blur-2xl group-hover:bg-indigo-400/30 transition-all" id="glow-balance"></div>
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2"><i class="fas fa-scale-balanced" id="icon-balance"></i> Remaining Balance</h3>
+                        <i class="fas fa-info-circle text-slate-300 group-hover:text-indigo-400 transition-colors"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-indigo-600" id="disp-balance-aed">AED 0.00</p>
+                    <p class="text-sm font-medium text-indigo-500 mt-1" id="disp-balance-inr">₹ 0.00</p>
+                </div>
+            </div>
+
+            <!-- Foreclosure Goal -->
+            <div class="glass-panel overflow-hidden relative border-indigo-200/50">
+                <div class="absolute inset-0 bg-gradient-to-r from-indigo-50/50 to-purple-50/50"></div>
+                <div class="p-8 relative z-10">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-indigo-900 flex items-center gap-2"><i class="fas fa-bullseye text-indigo-500"></i> Debt Foreclosure Tracker</h2>
+                            <p class="text-slate-500 text-sm mt-1">Total remaining debt across all accounts</p>
+                        </div>
+                        <div class="text-right glass px-4 py-2 rounded-xl">
+                            <p class="text-xs text-slate-400 font-semibold uppercase">Goal Amount</p>
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-indigo-900">AED</span>
+                                <span id="disp-totalDebt-aed" class="text-xl font-bold text-indigo-700 transition-all">0.00</span>
+                            </div>
+                            <p class="text-xs font-medium text-indigo-400 mt-1" id="disp-totalDebt-inr">₹ 0.00</p>
+                        </div>
+                    </div>
+                    <div class="glass bg-white/40 p-5 rounded-2xl border border-white/60">
+                        <p class="text-sm md:text-base text-slate-700 leading-relaxed font-medium" id="insight-text">Calculating timeline...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB: FIXED COSTS ================= -->
+        <div id="tab-fixed" class="tab-content hidden animate-fade-in">
+            <div class="glass-panel p-8">
+                <h2 class="text-xl font-bold text-slate-800 mb-6 border-b border-slate-200/50 pb-4 flex items-center gap-2"><i class="fas fa-sliders-h text-slate-400"></i> Monthly Base Parameters</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="space-y-2">
+                        <label class="block text-sm font-semibold text-slate-600">Monthly Salary</label>
+                        <div class="relative">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">AED</span>
+                            <input type="number" id="inp-salary" class="glass-input w-full pl-14 pr-4 py-3 rounded-xl font-bold text-lg text-slate-800 outline-none" oninput="updateStateValue('salary', this.value)">
+                        </div>
+                        <p class="text-sm text-emerald-600 font-medium pl-2" id="hint-salary-inr">≈ ₹ 0.00</p>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-sm font-semibold text-slate-600">Accommodation Fees</label>
+                        <div class="relative">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">AED</span>
+                            <input type="number" id="inp-accommodation" class="glass-input w-full pl-14 pr-4 py-3 rounded-xl font-bold text-lg text-slate-800 outline-none" oninput="updateStateValue('accommodation', this.value)">
+                        </div>
+                        <p class="text-sm text-emerald-600 font-medium pl-2" id="hint-accommodation-inr">≈ ₹ 0.00</p>
+                    </div>
+                    <div class="space-y-2 md:col-span-2">
+                        <label class="block text-sm font-semibold text-slate-600">Extra Credit Card Payments (Optional Base)</label>
+                        <div class="relative max-w-md">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">AED</span>
+                            <input type="number" id="inp-ccPayment" class="glass-input w-full pl-14 pr-4 py-3 rounded-xl font-bold text-lg text-slate-800 outline-none" oninput="updateStateValue('ccPayment', this.value)">
+                        </div>
+                        <p class="text-sm text-emerald-600 font-medium pl-2" id="hint-ccPayment-inr">≈ ₹ 0.00</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB: EMIs ================= -->
+        <div id="tab-emis" class="tab-content hidden animate-fade-in">
+            <div class="glass-panel overflow-hidden">
+                <div class="p-6 border-b border-slate-200/50 flex justify-between items-center bg-white/30">
+                    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-money-check-alt text-rose-400"></i> Active EMIs</h2>
+                    <button onclick="addEMI()" class="glass hover:bg-white text-indigo-600 px-4 py-2 rounded-lg font-semibold transition-all text-sm">+ Add Record</button>
+                </div>
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left border-collapse min-w-[600px]">
+                        <thead class="bg-slate-50/50 border-b border-slate-200/50">
+                            <tr>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Bank / Loan Details</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-48">AED Amount</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-40">INR Eqv.</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center w-36">Payment</th>
+                                <th class="px-6 py-4 w-16"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="emiList" class="divide-y divide-slate-200/50 bg-white/20"></tbody>
+                    </table>
+                </div>
+                <div class="bg-slate-50/50 p-6 border-t border-slate-200/50 flex justify-between items-center">
+                    <span class="font-bold text-slate-600 uppercase tracking-wide text-sm">Total Monthly EMIs</span>
+                    <div class="text-right">
+                        <span class="font-bold text-rose-600 text-xl" id="disp-totalEMIs-aed">AED 0.00</span>
+                        <span class="block text-sm font-medium text-slate-500" id="disp-totalEMIs-inr">≈ ₹ 0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB: CREDIT CARDS ================= -->
+        <div id="tab-creditcards" class="tab-content hidden animate-fade-in">
+            <div class="glass-panel overflow-hidden">
+                <div class="p-6 border-b border-slate-200/50 flex justify-between items-center bg-white/30">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-credit-card text-blue-500"></i> Credit Cards Activity</h2>
+                        <p class="text-sm text-slate-500 mt-1">Track monthly interest, payments, and withdrawals.</p>
+                    </div>
+                    <button onclick="addCreditCard()" class="glass hover:bg-white text-indigo-600 px-4 py-2 rounded-lg font-semibold transition-all text-sm">+ Add Card</button>
+                </div>
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left border-collapse min-w-[1000px]">
+                        <thead class="bg-slate-50/50 border-b border-slate-200/50">
+                            <tr>
+                                <th class="px-5 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-48">Card Name</th>
+                                <th class="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-40">Outstanding Base</th>
+                                <th class="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-36">Interest Added</th>
+                                <th class="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-36">Amount Paid</th>
+                                <th class="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-36">Withdrawn</th>
+                                <th class="px-4 py-4 w-12"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="creditCardList" class="divide-y divide-slate-200/50 bg-white/20"></tbody>
+                    </table>
+                </div>
+                <div class="bg-blue-50/50 p-6 border-t border-blue-100 flex justify-between items-center">
+                    <span class="font-bold text-blue-900 uppercase tracking-wide text-sm">Net Monthly CC Cashflow (Paid - Withdrawn)</span>
+                    <div class="text-right">
+                        <span class="font-bold text-blue-700 text-xl" id="disp-netCC-aed">AED 0.00</span>
+                        <span class="block text-sm font-medium text-blue-500" id="disp-netCC-inr">≈ ₹ 0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB: DAILY SPEND ================= -->
+        <div id="tab-daily" class="tab-content hidden animate-fade-in">
+            <div class="glass-panel overflow-hidden">
+                <div class="p-6 border-b border-slate-200/50 flex justify-between items-center bg-white/30">
+                    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-shopping-cart text-emerald-500"></i> Daily Variable Expenses</h2>
+                    <button onclick="addExpense()" class="glass hover:bg-white text-indigo-600 px-4 py-2 rounded-lg font-semibold transition-all text-sm">+ Log Expense</button>
+                </div>
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left border-collapse min-w-[700px]">
+                        <thead class="bg-slate-50/50 border-b border-slate-200/50">
+                            <tr>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-40">Date</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Description</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-40">AED Amount</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-36">INR Eqv.</th>
+                                <th class="px-6 py-4 w-16"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="expenseList" class="divide-y divide-slate-200/50 bg-white/20"></tbody>
+                    </table>
+                </div>
+                <div id="empty-expenses" class="hidden p-12 text-center text-slate-400 bg-white/20">
+                    <div class="w-16 h-16 glass rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-receipt text-2xl text-slate-300"></i></div>
+                    <p class="font-medium text-slate-500">No daily expenses logged for this month yet.</p>
+                </div>
+                <div class="bg-slate-50/50 p-6 border-t border-slate-200/50 flex justify-between items-center">
+                    <span class="font-bold text-slate-600 uppercase tracking-wide text-sm">Total Daily Spend</span>
+                    <div class="text-right">
+                        <span class="font-bold text-rose-600 text-xl" id="disp-totalVars-aed">AED 0.00</span>
+                        <span class="block text-sm font-medium text-slate-500" id="disp-totalVars-inr">≈ ₹ 0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB: FORECLOSURES ================= -->
+        <div id="tab-foreclosures" class="tab-content hidden animate-fade-in">
+            <div class="glass-panel overflow-hidden">
+                <div class="p-6 border-b border-slate-200/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/30">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-bullseye text-indigo-500"></i> Loan Foreclosures Tracker</h2>
+                        <p class="text-sm text-slate-500 mt-1">Manage your journey to becoming debt-free.</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left border-collapse min-w-[800px]">
+                        <thead class="bg-slate-50/50 border-b border-slate-200/50">
+                            <tr>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Account / Bank Name</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Type</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Foreclose Amt (AED)</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Foreclose Amt (INR)</th>
+                                <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="foreclosureList" class="divide-y divide-slate-200/50 bg-white/20"></tbody>
+                    </table>
+                </div>
+                <div class="bg-indigo-50/50 p-6 border-t border-indigo-100 flex justify-between items-center">
+                    <span class="font-bold text-indigo-900 uppercase tracking-wide text-sm">Total Required to Foreclose All</span>
+                    <div class="text-right">
+                        <span class="font-bold text-indigo-700 text-xl" id="disp-forecloseTotal-aed">AED 0.00</span>
+                        <span class="block text-sm font-medium text-indigo-500" id="disp-forecloseTotal-inr">≈ ₹ 0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB: BALANCES ================= -->
+        <div id="tab-balances" class="tab-content hidden animate-fade-in">
+            <div class="glass-panel p-8">
+                <h2 class="text-xl font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fas fa-piggy-bank text-emerald-500"></i> Available Balances</h2>
+                <p class="text-slate-500 mb-6 border-b border-slate-200/50 pb-4 text-sm">Track your liquid cash and bank accounts.</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="glass p-5 rounded-2xl border border-slate-200 hover:border-emerald-300 transition-all">
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><i class="fas fa-money-bill-wave text-emerald-400 mr-1"></i> Cash in Hand</label>
+                        <div class="relative">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">AED</span>
+                            <input type="number" id="inp-bal-cash" class="glass-input w-full pl-12 pr-3 py-2.5 rounded-xl font-bold text-lg text-slate-800 outline-none" oninput="updateBalance('cash', this.value)">
+                        </div>
+                        <p class="text-xs text-emerald-600 font-medium mt-2 ml-1" id="hint-bal-cash-inr">≈ ₹ 0.00</p>
+                    </div>
+                    <div class="glass p-5 rounded-2xl border border-slate-200 hover:border-red-300 transition-all">
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><i class="fas fa-building-columns text-red-500 mr-1"></i> RAKBANK</label>
+                        <div class="relative">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">AED</span>
+                            <input type="number" id="inp-bal-rakbank" class="glass-input w-full pl-12 pr-3 py-2.5 rounded-xl font-bold text-lg text-slate-800 outline-none" oninput="updateBalance('rakbank', this.value)">
+                        </div>
+                        <p class="text-xs text-emerald-600 font-medium mt-2 ml-1" id="hint-bal-rakbank-inr">≈ ₹ 0.00</p>
+                    </div>
+                    <div class="glass p-5 rounded-2xl border border-slate-200 hover:border-orange-300 transition-all">
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><i class="fas fa-building-columns text-orange-500 mr-1"></i> ICICI Account</label>
+                        <div class="relative">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">₹</span>
+                            <input type="number" id="inp-bal-icici" class="glass-input w-full pl-10 pr-3 py-2.5 rounded-xl font-bold text-lg text-slate-800 outline-none" oninput="updateBalance('icici', this.value)">
+                        </div>
+                        <p class="text-xs text-emerald-600 font-medium mt-2 ml-1" id="hint-bal-icici-aed">≈ AED 0.00</p>
+                    </div>
+                </div>
+                <div class="bg-emerald-50/50 p-6 rounded-2xl border border-emerald-100 flex justify-between items-center">
+                    <div>
+                        <span class="font-bold text-emerald-900 uppercase tracking-wide text-sm block">Total Available Liquidity</span>
+                        <span class="text-xs text-emerald-600">Combined balance across all sources</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="font-bold text-emerald-700 text-2xl" id="disp-totalBal-aed">AED 0.00</span>
+                        <span class="block text-sm font-medium text-emerald-600" id="disp-totalBal-inr">≈ ₹ 0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Floating Action Button -->
+    <button onclick="showTab('tab-daily'); addExpense(); window.scrollTo({top: 0, behavior: 'smooth'});" class="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-40 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-full shadow-2xl shadow-emerald-400/40 p-4 md:px-6 md:py-4 flex items-center justify-center gap-2 transition-transform hover:scale-105 no-print group">
+        <i class="fas fa-plus text-xl group-hover:rotate-90 transition-transform duration-300"></i><span class="font-bold hidden md:inline">Quick Expense</span>
+    </button>
+
+    <!-- Details Modal -->
+    <div id="detailsModal" class="fixed inset-0 bg-slate-900/40 hidden z-50 flex justify-center items-center backdrop-blur-md p-4 no-print transition-opacity">
+        <div class="glass-panel w-full max-w-md overflow-hidden flex flex-col relative bg-white/95 shadow-2xl scale-100">
+            <button onclick="closeDetails()" class="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full glass hover:bg-slate-100 text-slate-500 transition-all z-10"><i class="fas fa-times"></i></button>
+            <div class="p-6 border-b border-slate-200/50 bg-slate-50/80" id="detailsHeader"></div>
+            <div class="p-6 space-y-3" id="detailsContent"></div>
+            <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-200/50 text-center">
+                <button onclick="closeDetails()" class="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">Close Detailed View</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="reportModal" class="fixed inset-0 bg-slate-900/40 hidden z-50 flex justify-center items-center backdrop-blur-md p-4 no-print transition-opacity">
+        <div class="glass-panel w-full max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col modal-content relative bg-white/90">
+            <button onclick="closeReport()" class="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full glass hover:bg-slate-100 text-slate-500 transition-all no-print z-10"><i class="fas fa-times"></i></button>
+            <div class="p-8 pb-6 border-b border-slate-200/50 bg-slate-50/50 rounded-t-3xl">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-3xl font-bold text-slate-800 tracking-tight flex items-center gap-3"><i class="fas fa-file-invoice text-indigo-500"></i> Monthly Report</h2>
+                        <p class="text-slate-500 font-medium mt-1">Summary for <span id="reportMonthDisp" class="text-indigo-600 font-bold"></span></p>
+                    </div>
+                    <div class="text-right hidden sm:block">
+                        <p class="text-xs font-bold text-slate-400 uppercase">Conversion Rate</p>
+                        <p class="text-sm font-semibold text-slate-600" id="report-rate">1 AED = ₹0.00</p>
+                    </div>
+                </div>
+            </div>
+            <div id="reportContent" class="p-8"></div>
+            <div class="border-t border-slate-200/50 px-8 py-6 bg-slate-50/50 flex justify-end gap-3 rounded-b-3xl no-print flex-wrap">
+                <button onclick="closeReport()" class="px-6 py-2.5 text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl font-semibold transition-colors order-3 sm:order-1 w-full sm:w-auto">Close</button>
+                <button onclick="emailReport()" class="px-6 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 font-semibold shadow-md shadow-blue-200 transition-colors flex items-center justify-center gap-2 order-2 sm:order-2 w-full sm:w-auto"><i class="fas fa-envelope"></i> Email Report</button>
+                <button onclick="window.print()" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold shadow-md shadow-indigo-200 transition-colors flex items-center justify-center gap-2 order-1 sm:order-3 w-full sm:w-auto"><i class="fas fa-print"></i> Print PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================================
+        // 1. YOUR FIREBASE CONFIGURATION GOES HERE
+        // =========================================================================
+        const myFirebaseConfig = {
+            apiKey: "AIzaSyDM2DJD8nLAAgUiZyXuz4IczbDw-vPUzcY",
+            authDomain: "my-finance-tracker-3ecf3.firebaseapp.com",
+            projectId: "my-finance-tracker-3ecf3",
+            storageBucket: "my-finance-tracker-3ecf3.firebasestorage.app",
+            messagingSenderId: "741318145912",
+            appId: "1:741318145912:web:d09784b475c564dc137a8d"
+        };
+
+        // --- GLOBAL VARIABLES & STATE --- //
+        let liveExchangeRate = 22.50; 
+        let exchangeRate = 22.50; 
+        
+        const DEFAULT_STATE = {
+            savedExchangeRate: null,
+            salary: 5000,
+            accommodation: 1500,
+            ccPayment: 0,
+            balances: { cash: 0, rakbank: 0, icici: 0 },
+            creditCards: [
+                { id: 'cc1', name: 'Axis Credit Card', outstanding: 2745.10, interest: 136.53, paid: 1388.75, withdraw: 1254.90, foreclosed: false },
+                { id: 'cc2', name: 'IDFC Credit Card', outstanding: 1137.25, interest: 0.68, paid: 1059.45, withdraw: 1058.78, foreclosed: false },
+                { id: 'cc3', name: 'SBI Credit Card', outstanding: 1294.12, interest: 42.68, paid: 81.06, withdraw: 39.22, foreclosed: false },
+                { id: 'cc4', name: 'ICICI Credit Card', outstanding: 1960.78, interest: 58.32, paid: 1076.31, withdraw: 1019.14, foreclosed: false }
+            ],
+            emis: [
+                { id: 'l1', name: 'Mobikwik', amount: 377.73, months: 9, foreclose: 3118.31, foreclosed: false, paidThisMonth: false },
+                { id: 'l2', name: 'HDFC Phone', amount: 189.53, months: 2, foreclose: 379.06, foreclosed: false, paidThisMonth: false },
+                { id: 'l3', name: 'MoneyView', amount: 234.94, months: 18, foreclose: 3356.86, foreclosed: false, paidThisMonth: false },
+                { id: 'l4', name: 'Fibe', amount: 240.98, months: 9, foreclose: 1989.29, foreclosed: false, paidThisMonth: false },
+                { id: 'l5', name: 'Salman Bhaiya Account', amount: 566.00, months: 2, foreclose: 1132.00, foreclosed: false, paidThisMonth: false },
+                { id: 'l6', name: 'Lazy Pay', amount: 154.08, months: 12, foreclose: 1848.94, foreclosed: false, paidThisMonth: false },
+                { id: 'l7', name: 'Lazy Pay 2', amount: 117.02, months: 12, foreclose: 1404.24, foreclosed: false, paidThisMonth: false }
+            ],
+            expenses: []
+        };
+
+        let appState = {};
+        let currentMonthKey = '';
+
+        // --- FIREBASE CLOUD SETUP --- //
+        const isCanvasEnv = typeof __firebase_config !== 'undefined';
+        const activeConfig = isCanvasEnv ? JSON.parse(__firebase_config) : myFirebaseConfig;
+        const targetAppId = isCanvasEnv ? (typeof __app_id !== 'undefined' ? __app_id : 'default') : 'my-personal-finance';
+
+        const app = initializeApp(activeConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
+        let currentUser = null;
+
+        // AUTHENTICATION LOGIC
+        if (isCanvasEnv) {
+            // Logic for previewing inside the Canvas environment
+            const initAuth = async () => {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            };
+            initAuth();
+        } else {
+            // Logic for GitHub Pages (Wait for user to click sign in)
+            document.getElementById('auth-screen').classList.remove('hidden');
+        }
+
+        window.signInWithGoogle = async () => {
+            try {
+                await signInWithPopup(auth, provider);
+            } catch (e) {
+                console.error(e);
+                alert("Sign in failed. Make sure you replaced 'myFirebaseConfig' with your actual keys and enabled Google Auth in Firebase.");
+            }
+        };
+
+        window.logOut = () => signOut(auth);
+
+        onAuthStateChanged(auth, async (user) => {
+            currentUser = user;
+            if(user) {
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('cloud-status').classList.remove('hidden');
+                
+                if (!isCanvasEnv) {
+                    document.getElementById('logout-btn').classList.remove('hidden');
+                }
+                
+                if (currentMonthKey) {
+                    await loadData(currentMonthKey);
+                }
+            } else {
+                if (!isCanvasEnv) {
+                    document.getElementById('auth-screen').classList.remove('hidden');
+                    document.getElementById('logout-btn').classList.add('hidden');
+                    document.getElementById('cloud-status').classList.add('hidden');
+                }
+            }
+        });
+
+        // --- FORMATTERS --- //
+        const formatAED = (num) => `AED ${Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        const formatINR = (num) => `₹ ${(Number(num) * exchangeRate).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+        // --- INITIALIZATION --- //
+        document.addEventListener('DOMContentLoaded', async () => {
+            const today = new Date();
+            const monthStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+            document.getElementById('monthSelector').value = monthStr;
+            currentMonthKey = monthStr;
+            
+            await fetchExchangeRate();
+            // Data loading is triggered by onAuthStateChanged when user signs in
+        });
+
+        async function fetchExchangeRate() {
+            try {
+                const response = await fetch('https://open.er-api.com/v6/latest/AED');
+                const data = await response.json();
+                if (data && data.rates && data.rates.INR) {
+                    liveExchangeRate = data.rates.INR;
+                    document.getElementById('rate-spinner').classList.add('hidden');
+                    document.getElementById('rate-icon').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to fetch live rate.', error);
+                document.getElementById('rate-spinner').classList.add('hidden');
+                document.getElementById('rate-icon').classList.remove('hidden');
+            }
+        }
+
+        // --- TAB MANAGEMENT --- //
+        window.showTab = function(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('glass-active', 'text-indigo-600', 'font-semibold', 'shadow-sm');
+                el.classList.add('glass', 'text-slate-500');
+            });
+            document.getElementById(tabId).classList.remove('hidden');
+            const activeBtn = document.querySelector(`[onclick*="showTab('${tabId}')"]`);
+            if (activeBtn) {
+                activeBtn.classList.remove('glass', 'text-slate-500');
+                activeBtn.classList.add('glass-active', 'text-indigo-600', 'font-semibold', 'shadow-sm');
+            }
+        };
+
+        // --- DATA MANAGEMENT (Cloud Database) --- //
+        async function loadData(monthKey) {
+            if (!currentUser) return; // Guard clause
+
+            let dataFound = false;
+            try {
+                const docRef = doc(db, 'artifacts', targetAppId, 'users', currentUser.uid, 'months', monthKey);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    appState = docSnap.data();
+                    dataFound = true;
+                } else {
+                    const inherited = await inheritFromPreviousMonthCloud(monthKey);
+                    if(inherited) {
+                        appState = inherited;
+                        dataFound = true;
+                    }
+                }
+            } catch (error) {
+                console.error("Cloud fetch failed", error);
+                showToast("Failed to fetch data from cloud.");
+            }
+
+            // Defaults & Migrations
+            if (!dataFound) {
+                appState = JSON.parse(JSON.stringify(DEFAULT_STATE));
+                appState.expenses = [];
+                appState.savedExchangeRate = liveExchangeRate;
+            }
+
+            if (appState.creditCardDebt !== undefined) {
+                appState.creditCards = DEFAULT_STATE.creditCards.map(e => ({...e}));
+                delete appState.creditCardDebt;
+            }
+            if (appState.savedExchangeRate === undefined) {
+                appState.savedExchangeRate = liveExchangeRate;
+            }
+
+            if (appState.savedExchangeRate) {
+                exchangeRate = appState.savedExchangeRate;
+                document.getElementById('live-rate').innerText = `1 AED = ₹${exchangeRate.toFixed(2)} (Saved)`;
+            } else {
+                exchangeRate = liveExchangeRate;
+                document.getElementById('live-rate').innerText = `1 AED = ₹${exchangeRate.toFixed(2)} (Live)`;
+            }
+
+            populateInputs();
+            renderEMIs();
+            renderCreditCards();
+            renderForeclosures();
+            renderExpenses();
+            calculateTotals();
+        }
+
+        async function inheritFromPreviousMonthCloud(targetMonth) {
+            try {
+                const monthsRef = collection(db, 'artifacts', targetAppId, 'users', currentUser.uid, 'months');
+                const snap = await getDocs(monthsRef);
+                let keys = [];
+                snap.forEach(d => keys.push(d.id));
+                keys.sort();
+                
+                let pastKey = null;
+                for (let i = keys.length - 1; i >= 0; i--) {
+                    if (keys[i] < targetMonth) {
+                        pastKey = keys[i];
+                        break;
+                    }
+                }
+
+                if (pastKey) {
+                    const pastDoc = await getDoc(doc(db, 'artifacts', targetAppId, 'users', currentUser.uid, 'months', pastKey));
+                    if(pastDoc.exists()) {
+                        let pastState = pastDoc.data();
+                        if(!pastState.balances) return null;
+                        if(!pastState.creditCards) pastState.creditCards = DEFAULT_STATE.creditCards.map(e => ({...e}));
+
+                        pastState.emis.forEach(emi => { emi.paidThisMonth = false; });
+                        pastState.creditCards.forEach(cc => {
+                            if(!cc.foreclosed) {
+                                cc.outstanding = Math.max(0, cc.outstanding + cc.interest + cc.withdraw - cc.paid);
+                                cc.interest = 0; cc.paid = 0; cc.withdraw = 0;
+                            }
+                        });
+                        pastState.savedExchangeRate = liveExchangeRate;
+                        return pastState;
+                    }
+                }
+            } catch (e) { console.error("Cloud inheritance failed", e); }
+            return null;
+        }
+
+        window.saveData = async function() {
+            appState.savedExchangeRate = exchangeRate;
+            
+            if (currentUser) {
+                try {
+                    const docRef = doc(db, 'artifacts', targetAppId, 'users', currentUser.uid, 'months', currentMonthKey);
+                    await setDoc(docRef, appState);
+                    showToast('Data saved securely to Cloud!');
+                } catch(e) {
+                    console.error("Firebase save error", e);
+                    showToast('Error saving to Cloud. Check console.');
+                }
+            } else {
+                // Graceful fallback to local storage if user chooses not to sign in
+                localStorage.setItem('finance_abudhabi_' + currentMonthKey, JSON.stringify(appState));
+                showToast('Month data saved to device (Local Fallback)');
+            }
+        };
+
+        window.changeMonth = async function(val) {
+            if(!val) return;
+            currentMonthKey = val;
+            await loadData(currentMonthKey);
+        };
+
+        function populateInputs() {
+            document.getElementById('inp-salary').value = appState.salary;
+            document.getElementById('inp-accommodation').value = appState.accommodation;
+            document.getElementById('inp-ccPayment').value = appState.ccPayment;
+            document.getElementById('inp-bal-cash').value = appState.balances.cash || 0;
+            document.getElementById('inp-bal-rakbank').value = appState.balances.rakbank || 0;
+            document.getElementById('inp-bal-icici').value = appState.balances.icici || 0;
+        }
+
+        window.updateStateValue = function(key, value) { appState[key] = value === '' ? 0 : Number(value); calculateTotals(); };
+        window.updateBalance = function(type, value) { appState.balances[type] = value === '' ? 0 : Number(value); calculateTotals(); };
+
+        // --- RENDER FUNCTIONS --- //
+        function renderEMIs() {
+            const tbody = document.getElementById('emiList');
+            const activeEmis = appState.emis.filter(e => !e.foreclosed);
+            tbody.innerHTML = activeEmis.map((emi, i) => {
+                const globalIndex = appState.emis.findIndex(e => e.id === emi.id);
+                return `
+                <tr class="hover:bg-white/50 transition-colors group ${emi.paidThisMonth ? 'opacity-60 bg-slate-50' : ''}">
+                    <td class="px-6 py-3">
+                        <div class="flex items-center">
+                            <input type="text" class="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 px-2 py-1 outline-none transition-all font-semibold text-slate-700" value="${emi.name}" onchange="updateEMI(${globalIndex}, 'name', this.value)">
+                            ${emi.paidThisMonth ? '<span class="text-xs text-emerald-500 font-bold ml-2 whitespace-nowrap"><i class="fas fa-check-circle"></i> Paid</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="px-6 py-3">
+                        <div class="flex items-center glass-input rounded-lg px-3 py-1 bg-white/50">
+                            <span class="text-slate-400 mr-2 text-sm font-bold">AED</span>
+                            <input type="number" step="0.01" class="w-full bg-transparent outline-none font-bold text-slate-800" value="${emi.amount}" oninput="updateEMI(${globalIndex}, 'amount', this.value)">
+                        </div>
+                    </td>
+                    <td class="px-6 py-3 font-medium text-slate-500">${formatINR(emi.amount)}</td>
+                    <td class="px-6 py-3 text-center">
+                        <button onclick="toggleEmiPaid(${globalIndex})" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm whitespace-nowrap ${emi.paidThisMonth ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200 shadow-emerald-100' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">
+                            ${emi.paidThisMonth ? '<i class="fas fa-check mr-1"></i> Paid' : 'Mark Paid'}
+                        </button>
+                    </td>
+                    <td class="px-6 py-3 text-center">
+                        <button onclick="deleteEMI(${globalIndex})" class="text-slate-400 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100"><i class="fas fa-trash-alt"></i></button>
+                    </td>
+                </tr>`}).join('');
+            if(activeEmis.length === 0) tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-slate-500 font-medium">No active EMIs tracked.</td></tr>`;
+        }
+
+        function renderCreditCards() {
+            const tbody = document.getElementById('creditCardList');
+            const activeCCs = appState.creditCards.filter(c => !c.foreclosed);
+            tbody.innerHTML = activeCCs.map((cc, i) => {
+                const globalIndex = appState.creditCards.findIndex(c => c.id === cc.id);
+                return `
+                <tr class="hover:bg-white/50 transition-colors group">
+                    <td class="px-5 py-3"><input type="text" class="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 px-2 py-1 outline-none transition-all font-semibold text-slate-700" value="${cc.name}" onchange="updateCreditCard(${globalIndex}, 'name', this.value)"></td>
+                    <td class="px-4 py-3"><div class="flex flex-col"><div class="flex items-center glass-input rounded-lg px-2 py-1 bg-white/50"><span class="text-slate-400 mr-1 text-xs font-bold">AED</span><input type="number" step="0.01" class="w-full bg-transparent outline-none font-bold text-slate-800 text-sm" value="${cc.outstanding}" oninput="updateCreditCard(${globalIndex}, 'outstanding', this.value)"></div><span class="text-[10px] text-slate-400 font-medium mt-1 ml-1">${formatINR(cc.outstanding)}</span></div></td>
+                    <td class="px-4 py-3"><div class="flex flex-col"><div class="flex items-center glass-input rounded-lg px-2 py-1 bg-rose-50 border-rose-100"><span class="text-rose-400 mr-1 text-xs font-bold">AED</span><input type="number" step="0.01" class="w-full bg-transparent outline-none font-bold text-rose-700 text-sm" value="${cc.interest}" oninput="updateCreditCard(${globalIndex}, 'interest', this.value)"></div><span class="text-[10px] text-rose-400/80 font-medium mt-1 ml-1">${formatINR(cc.interest)}</span></div></td>
+                    <td class="px-4 py-3"><div class="flex flex-col"><div class="flex items-center glass-input rounded-lg px-2 py-1 bg-emerald-50 border-emerald-100"><span class="text-emerald-500 mr-1 text-xs font-bold">AED</span><input type="number" step="0.01" class="w-full bg-transparent outline-none font-bold text-emerald-700 text-sm" value="${cc.paid}" oninput="updateCreditCard(${globalIndex}, 'paid', this.value)"></div><span class="text-[10px] text-emerald-500/80 font-medium mt-1 ml-1">${formatINR(cc.paid)}</span></div></td>
+                    <td class="px-4 py-3"><div class="flex flex-col"><div class="flex items-center glass-input rounded-lg px-2 py-1 bg-indigo-50 border-indigo-100"><span class="text-indigo-400 mr-1 text-xs font-bold">AED</span><input type="number" step="0.01" class="w-full bg-transparent outline-none font-bold text-indigo-700 text-sm" value="${cc.withdraw}" oninput="updateCreditCard(${globalIndex}, 'withdraw', this.value)"></div><span class="text-[10px] text-indigo-400/80 font-medium mt-1 ml-1">${formatINR(cc.withdraw)}</span></div></td>
+                    <td class="px-4 py-3 text-center"><button onclick="deleteCreditCard(${globalIndex})" class="text-slate-400 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100"><i class="fas fa-trash-alt"></i></button></td>
+                </tr>`}).join('');
+            if(activeCCs.length === 0) tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-slate-500 font-medium">No active Credit Cards tracked.</td></tr>`;
+        }
+
+        function renderForeclosures() {
+            const tbody = document.getElementById('foreclosureList');
+            let html = appState.emis.map((emi, i) => `
+                <tr class="hover:bg-white/50 transition-colors ${emi.foreclosed ? 'opacity-50 grayscale bg-slate-100/50' : ''}">
+                    <td class="px-6 py-4 font-semibold text-slate-700">${emi.name}${emi.foreclosed ? '<span class="ml-2 text-[10px] bg-slate-200 text-slate-600 px-2 py-1 rounded-full font-bold tracking-wider">FORECLOSED</span>' : ''}</td>
+                    <td class="px-6 py-4 font-medium text-slate-500 text-sm"><span class="bg-indigo-50 text-indigo-600 px-2 py-1 rounded border border-indigo-100">Loan / EMI</span></td>
+                    <td class="px-6 py-4"><div class="flex items-center bg-white border border-slate-200 rounded px-2 py-1 w-32 focus-within:border-indigo-500 ${emi.foreclosed ? 'pointer-events-none' : ''}"><span class="text-slate-400 text-xs font-bold mr-1">AED</span><input type="number" step="0.01" class="w-full bg-transparent outline-none font-bold text-slate-700 text-sm" value="${emi.foreclose}" oninput="updateEMI(${i}, 'foreclose', this.value)"></div></td>
+                    <td class="px-6 py-4 font-medium text-slate-500 text-sm">${formatINR(emi.foreclose)}</td>
+                    <td class="px-6 py-4 text-center"><button onclick="toggleForeclosed(${i}, 'emi')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${emi.foreclosed ? 'bg-indigo-100 text-indigo-700 border border-indigo-200 hover:bg-indigo-200' : 'bg-white text-rose-500 border border-rose-200 hover:bg-rose-50'}">${emi.foreclosed ? 'Re-open' : 'Foreclose'}</button></td>
+                </tr>`).join('');
+            html += appState.creditCards.map((cc, i) => `
+                <tr class="hover:bg-white/50 transition-colors ${cc.foreclosed ? 'opacity-50 grayscale bg-slate-100/50' : ''}">
+                    <td class="px-6 py-4 font-semibold text-slate-700">${cc.name}${cc.foreclosed ? '<span class="ml-2 text-[10px] bg-slate-200 text-slate-600 px-2 py-1 rounded-full font-bold tracking-wider">FORECLOSED</span>' : ''}</td>
+                    <td class="px-6 py-4 font-medium text-slate-500 text-sm"><span class="bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100">Credit Card</span></td>
+                    <td class="px-6 py-4"><div class="flex items-center bg-white border border-slate-200 rounded px-2 py-1 w-32 focus-within:border-indigo-500 ${cc.foreclosed ? 'pointer-events-none' : ''}"><span class="text-slate-400 text-xs font-bold mr-1">AED</span><input type="number" step="0.01" class="w-full bg-transparent outline-none font-bold text-slate-700 text-sm" value="${cc.outstanding}" oninput="updateCreditCard(${i}, 'outstanding', this.value)"></div></td>
+                    <td class="px-6 py-4 font-medium text-slate-500 text-sm">${formatINR(cc.outstanding)}</td>
+                    <td class="px-6 py-4 text-center"><button onclick="toggleForeclosed(${i}, 'cc')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${cc.foreclosed ? 'bg-indigo-100 text-indigo-700 border border-indigo-200 hover:bg-indigo-200' : 'bg-white text-rose-500 border border-rose-200 hover:bg-rose-50'}">${cc.foreclosed ? 'Re-open' : 'Foreclose'}</button></td>
+                </tr>`).join('');
+            tbody.innerHTML = html;
+        }
+
+        function renderExpenses() {
+            const tbody = document.getElementById('expenseList');
+            if(appState.expenses.length === 0) {
+                tbody.innerHTML = ''; document.getElementById('empty-expenses').classList.remove('hidden');
+            } else {
+                document.getElementById('empty-expenses').classList.add('hidden');
+                tbody.innerHTML = appState.expenses.map((exp, i) => `
+                    <tr class="hover:bg-white/50 transition-colors group">
+                        <td class="px-6 py-3"><input type="date" class="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 px-2 py-1 outline-none text-sm transition-all text-slate-600 font-medium cursor-pointer" value="${exp.date}" onchange="updateExpense(${i}, 'date', this.value)"></td>
+                        <td class="px-6 py-3"><input type="text" placeholder="e.g. Groceries" class="w-full bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 px-2 py-1 outline-none text-sm font-semibold text-slate-700 transition-all" value="${exp.desc}" onchange="updateExpense(${i}, 'desc', this.value)"></td>
+                        <td class="px-6 py-3"><div class="flex items-center glass-input rounded-lg px-3 py-1 bg-white/50"><span class="text-slate-400 mr-2 text-xs font-bold">AED</span><input type="number" step="0.01" class="w-full bg-transparent outline-none font-bold text-slate-800 text-sm" value="${exp.amount}" oninput="updateExpense(${i}, 'amount', this.value)"></div></td>
+                        <td class="px-6 py-3 text-sm font-medium text-slate-500">${formatINR(exp.amount)}</td>
+                        <td class="px-6 py-3 text-center"><button onclick="deleteExpense(${i})" class="text-slate-400 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100"><i class="fas fa-times"></i></button></td>
+                    </tr>`).join('');
+            }
+        }
+
+        // Add/Update Functions
+        window.addEMI = () => { appState.emis.unshift({ id: 'l' + Date.now(), name: 'New Loan', amount: 0, months: 0, foreclose: 0, foreclosed: false, paidThisMonth: false }); renderEMIs(); renderForeclosures(); calculateTotals(); };
+        window.updateEMI = (i, f, v) => { appState.emis[i][f] = ['amount', 'months', 'foreclose'].includes(f) ? (v === '' ? 0 : Number(v)) : v; if(f === 'amount') { renderEMIs(); renderForeclosures(); } calculateTotals(); };
+        window.deleteEMI = (i) => { appState.emis.splice(i, 1); renderEMIs(); renderForeclosures(); calculateTotals(); };
+        window.addCreditCard = () => { appState.creditCards.unshift({ id: 'cc' + Date.now(), name: 'New Card', outstanding: 0, interest: 0, paid: 0, withdraw: 0, foreclosed: false }); renderCreditCards(); renderForeclosures(); calculateTotals(); };
+        window.updateCreditCard = (i, f, v) => { appState.creditCards[i][f] = ['outstanding', 'interest', 'paid', 'withdraw'].includes(f) ? (v === '' ? 0 : Number(v)) : v; if(['outstanding', 'interest', 'paid', 'withdraw'].includes(f)) { renderCreditCards(); if(f === 'outstanding') renderForeclosures(); } calculateTotals(); };
+        window.deleteCreditCard = (i) => { appState.creditCards.splice(i, 1); renderCreditCards(); renderForeclosures(); calculateTotals(); };
+        window.addExpense = () => { let d = new Date().toISOString().split('T')[0]; if(!d.startsWith(currentMonthKey)) d = currentMonthKey + '-01'; appState.expenses.unshift({ date: d, desc: '', amount: 0 }); renderExpenses(); calculateTotals(); };
+        window.updateExpense = (i, f, v) => { if (f === 'amount') appState.expenses[i].amount = v === '' ? 0 : Number(v); else appState.expenses[i][f] = v; if(f === 'amount') renderExpenses(); calculateTotals(); };
+        window.deleteExpense = (i) => { appState.expenses.splice(i, 1); renderExpenses(); calculateTotals(); };
+        
+        window.toggleEmiPaid = (i) => {
+            const emi = appState.emis[i];
+            if (!emi.paidThisMonth) { emi.paidThisMonth = true; emi.months = Math.max(0, emi.months - 1); emi.foreclose = Math.max(0, emi.foreclose - emi.amount); } 
+            else { emi.paidThisMonth = false; emi.months += 1; emi.foreclose += emi.amount; }
+            renderEMIs(); renderForeclosures(); calculateTotals();
+        };
+
+        window.toggleForeclosed = (i, type) => {
+            if(type === 'emi') { appState.emis[i].foreclosed = !appState.emis[i].foreclosed; appState.emis[i].paidThisMonth = false; } 
+            else if (type === 'cc') appState.creditCards[i].foreclosed = !appState.creditCards[i].foreclosed;
+            renderEMIs(); renderCreditCards(); renderForeclosures(); calculateTotals();
+        };
+
+        // --- CALCULATIONS --- //
+        function calculateTotals() {
+            const activeEmis = appState.emis.filter(e => !e.foreclosed);
+            const activeCCs = appState.creditCards.filter(c => !c.foreclosed);
+            const totalEMIs = activeEmis.reduce((sum, item) => sum + item.amount, 0);
+            const totalVars = appState.expenses.reduce((sum, item) => sum + item.amount, 0);
+            const netCCPayment = activeCCs.reduce((sum, c) => sum + (c.paid - c.withdraw), 0);
+            const fixedExpenses = appState.accommodation + appState.ccPayment;
+            
+            const totalOutflow = fixedExpenses + totalEMIs + totalVars + netCCPayment;
+            const netBalance = appState.salary - totalOutflow;
+
+            const totalDebt = activeEmis.reduce((sum, item) => sum + item.foreclose, 0) + activeCCs.reduce((sum, item) => sum + item.outstanding, 0);
+
+            document.getElementById('hint-salary-inr').innerText = formatINR(appState.salary);
+            document.getElementById('hint-accommodation-inr').innerText = formatINR(appState.accommodation);
+            document.getElementById('hint-ccPayment-inr').innerText = formatINR(appState.ccPayment);
+            
+            document.getElementById('disp-income-aed').innerText = formatAED(appState.salary);
+            document.getElementById('disp-income-inr').innerText = formatINR(appState.salary);
+            document.getElementById('disp-expense-aed').innerText = formatAED(totalOutflow);
+            document.getElementById('disp-expense-inr').innerText = formatINR(totalOutflow);
+            document.getElementById('disp-balance-aed').innerText = formatAED(netBalance);
+            document.getElementById('disp-balance-inr').innerText = formatINR(netBalance);
+
+            const balIcon = document.getElementById('icon-balance');
+            const balAed = document.getElementById('disp-balance-aed');
+            const balInr = document.getElementById('disp-balance-inr');
+            const glowBal = document.getElementById('glow-balance');
+
+            if(netBalance < 0) {
+                balAed.className = "text-3xl font-bold text-rose-600"; balInr.className = "text-sm font-medium text-rose-500 mt-1"; balIcon.className = "fas fa-exclamation-circle text-rose-500"; glowBal.className = "absolute -right-6 -top-6 w-24 h-24 bg-rose-400/20 rounded-full blur-2xl transition-all";
+            } else {
+                balAed.className = "text-3xl font-bold text-indigo-600"; balInr.className = "text-sm font-medium text-indigo-500 mt-1"; balIcon.className = "fas fa-scale-balanced text-indigo-500"; glowBal.className = "absolute -right-6 -top-6 w-24 h-24 bg-indigo-400/20 rounded-full blur-2xl transition-all";
+            }
+
+            document.getElementById('disp-totalEMIs-aed').innerText = formatAED(totalEMIs);
+            document.getElementById('disp-totalEMIs-inr').innerText = formatINR(totalEMIs);
+            document.getElementById('disp-netCC-aed').innerText = formatAED(netCCPayment);
+            document.getElementById('disp-netCC-inr').innerText = formatINR(netCCPayment);
+            document.getElementById('disp-totalVars-aed').innerText = formatAED(totalVars);
+            document.getElementById('disp-totalVars-inr').innerText = formatINR(totalVars);
+            document.getElementById('disp-totalDebt-aed').innerText = Number(totalDebt).toLocaleString('en-US', {minimumFractionDigits: 2});
+            document.getElementById('disp-totalDebt-inr').innerText = formatINR(totalDebt);
+            document.getElementById('disp-forecloseTotal-aed').innerText = formatAED(totalDebt);
+            document.getElementById('disp-forecloseTotal-inr').innerText = formatINR(totalDebt);
+            
+            const insightBox = document.getElementById('insight-text');
+            if(totalDebt <= 0) insightBox.innerHTML = `<span class="text-emerald-600"><i class="fas fa-check-circle"></i> <strong>Congratulations!</strong> You have reached your foreclosure goal!</span>`;
+            else if (netBalance > 0) insightBox.innerHTML = `If you dedicate your current monthly balance of <strong class="text-indigo-700">${formatAED(netBalance)}</strong> towards this debt, you could be completely debt-free in approximately <strong class="text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded">${Math.ceil(totalDebt / netBalance)} months</strong>.`;
+            else insightBox.innerHTML = `<span class="text-rose-600"><i class="fas fa-exclamation-triangle"></i> You currently have a <strong>negative balance</strong>. Reduce expenses to free up cash for foreclosure.</span>`;
+
+            const iciciAed = (appState.balances.icici || 0) / exchangeRate;
+            document.getElementById('hint-bal-cash-inr').innerText = formatINR(appState.balances.cash || 0);
+            document.getElementById('hint-bal-rakbank-inr').innerText = formatINR(appState.balances.rakbank || 0);
+            document.getElementById('hint-bal-icici-aed').innerText = `≈ ${formatAED(iciciAed)}`;
+            const totalAvailableLiquidity = (appState.balances.cash || 0) + (appState.balances.rakbank || 0) + iciciAed;
+            document.getElementById('disp-totalBal-aed').innerText = formatAED(totalAvailableLiquidity);
+            document.getElementById('disp-totalBal-inr').innerText = formatINR(totalAvailableLiquidity);
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast'); document.getElementById('toastMsg').innerText = msg; toast.classList.remove('translate-y-[-150%]', 'opacity-0');
+            setTimeout(() => { toast.classList.add('translate-y-[-150%]', 'opacity-0'); }, 3000);
+        }
+
+        window.showDetails = function(type) {
+            const header = document.getElementById('detailsHeader'); const content = document.getElementById('detailsContent');
+            const activeEmis = appState.emis.filter(e => !e.foreclosed); const activeCCs = appState.creditCards.filter(c => !c.foreclosed);
+            const tEMIs = activeEmis.reduce((sum, item) => sum + item.amount, 0); const tVars = appState.expenses.reduce((sum, item) => sum + item.amount, 0);
+            const netCCPayment = activeCCs.reduce((sum, c) => sum + (c.paid - c.withdraw), 0);
+            const fixedExpenses = appState.accommodation + appState.ccPayment;
+            const totalOutflow = fixedExpenses + tEMIs + tVars + netCCPayment;
+            const bal = appState.salary - totalOutflow;
+
+            if (type === 'income') {
+                header.innerHTML = `<h3 class="text-xl font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-arrow-down text-emerald-500 bg-emerald-100 p-2 rounded-lg"></i> Income Breakdown</h3>`;
+                content.innerHTML = `<div class="flex justify-between items-center py-2 border-b border-slate-100/70"><span class="text-slate-600 font-medium">Monthly Salary</span><div class="text-right"><span class="font-bold text-slate-800 block">${formatAED(appState.salary)}</span><span class="text-xs text-slate-400 font-medium">${formatINR(appState.salary)}</span></div></div><div class="flex justify-between items-center py-2 mt-2"><span class="font-bold text-slate-800">Total Income</span><span class="font-extrabold text-emerald-600 text-lg">${formatAED(appState.salary)}</span></div>`;
+            } else if (type === 'outflow') {
+                header.innerHTML = `<h3 class="text-xl font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-arrow-up text-rose-500 bg-rose-100 p-2 rounded-lg"></i> Outflow Breakdown</h3>`;
+                content.innerHTML = `<div class="flex justify-between items-center py-2 border-b border-slate-100/70"><span class="text-slate-600 font-medium">Accommodation</span><span class="font-bold text-slate-800">${formatAED(appState.accommodation)}</span></div>${appState.ccPayment > 0 ? `<div class="flex justify-between items-center py-2 border-b border-slate-100/70"><span class="text-slate-600 font-medium">Extra CC Payment</span><span class="font-bold text-slate-800">${formatAED(appState.ccPayment)}</span></div>` : ''}<div class="flex justify-between items-center py-2 border-b border-slate-100/70"><span class="text-slate-600 font-medium">Active EMIs (${activeEmis.length})</span><span class="font-bold text-slate-800">${formatAED(tEMIs)}</span></div><div class="flex justify-between items-center py-2 border-b border-slate-100/70"><span class="text-slate-600 font-medium">Net CC Payment (Paid - Withdrawn)</span><span class="font-bold text-slate-800">${formatAED(netCCPayment)}</span></div><div class="flex justify-between items-center py-2 border-b border-slate-100/70"><span class="text-slate-600 font-medium">Daily Spend Logs (${appState.expenses.length})</span><span class="font-bold text-slate-800">${formatAED(tVars)}</span></div><div class="flex justify-between items-center py-2 mt-2"><span class="font-bold text-slate-800">Total Outflow</span><div class="text-right"><span class="font-extrabold text-rose-600 text-lg block">${formatAED(totalOutflow)}</span><span class="text-xs text-rose-400 font-medium">${formatINR(totalOutflow)}</span></div></div>`;
+            } else if (type === 'balance') {
+                header.innerHTML = `<h3 class="text-xl font-bold text-slate-800 flex items-center gap-2"><i class="fas fa-scale-balanced text-indigo-500 bg-indigo-100 p-2 rounded-lg"></i> Balance Breakdown</h3>`;
+                content.innerHTML = `<div class="flex justify-between items-center py-2 border-b border-slate-100/70"><span class="text-slate-600 font-medium">Total Income</span><span class="font-bold text-emerald-600">${formatAED(appState.salary)}</span></div><div class="flex justify-between items-center py-2 border-b border-slate-100/70"><span class="text-slate-600 font-medium">Total Outflow</span><span class="font-bold text-rose-600">- ${formatAED(totalOutflow)}</span></div><div class="flex justify-between items-center py-2 mt-2"><span class="font-bold text-slate-800">Remaining Balance</span><div class="text-right"><span class="font-extrabold ${bal >= 0 ? 'text-indigo-600' : 'text-rose-600'} text-lg block">${formatAED(bal)}</span><span class="text-xs ${bal >= 0 ? 'text-indigo-400' : 'text-rose-400'} font-medium">${formatINR(bal)}</span></div></div>`;
+            }
+            document.getElementById('detailsModal').classList.remove('hidden');
+        };
+
+        window.closeDetails = function() { document.getElementById('detailsModal').classList.add('hidden'); };
+
+        window.setupReminder = function() {
+            const icsData = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//FinanceTracker//EN\nBEGIN:VEVENT\nSUMMARY:Log Daily Expenses (Finance Tracker)\nRRULE:FREQ=DAILY\nDTSTART:20240101T190000Z\nDTEND:20240101T191500Z\nDESCRIPTION:Take 2 minutes to quickly log your daily expenses in your Finance Tracker.\nBEGIN:VALARM\nACTION:DISPLAY\nDESCRIPTION:Log Daily Expenses\nTRIGGER:-PT0M\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR`;
+            const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.setAttribute('download', 'Daily_Expense_Reminder.ics');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast("Calendar reminder downloaded! Open the file to save it to your phone's calendar.");
+        };
+
+        window.emailReport = function() {
+            const activeEmis = appState.emis.filter(e => !e.foreclosed); const activeCCs = appState.creditCards.filter(c => !c.foreclosed);
+            const tEMIs = activeEmis.reduce((sum, item) => sum + item.amount, 0); const tVars = appState.expenses.reduce((sum, item) => sum + item.amount, 0);
+            const netCCPayment = activeCCs.reduce((sum, c) => sum + (c.paid - c.withdraw), 0);
+            const tOutflow = appState.accommodation + appState.ccPayment + tEMIs + tVars + netCCPayment; const bal = appState.salary - tOutflow;
+            const totalDebt = activeEmis.reduce((sum, item) => sum + item.foreclose, 0) + activeCCs.reduce((sum, item) => sum + item.outstanding, 0);
+            
+            const monthName = new Date(currentMonthKey + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
+            const subject = `Finance Report: ${monthName}`;
+            const body = `Financial Summary for ${monthName}:\n\n[INCOME & SAVINGS]\nTotal Income: AED ${appState.salary.toFixed(2)}\nNet Remaining Balance: AED ${bal.toFixed(2)}\n\n[OUTFLOW BREAKDOWN]\nAccommodation: AED ${appState.accommodation.toFixed(2)}\nExtra CC Payment: AED ${appState.ccPayment.toFixed(2)}\nLoan EMIs (${activeEmis.length}): AED ${tEMIs.toFixed(2)}\nNet CC Cashflow (${activeCCs.length}): AED ${netCCPayment.toFixed(2)}\nDaily Variables: AED ${tVars.toFixed(2)}\n---\nTotal Outflow: AED ${tOutflow.toFixed(2)}\n\n[FORECLOSURE STATUS]\nTotal Remaining Debt: AED ${totalDebt.toFixed(2)}\nEstimated Months to Clear: ${bal > 0 ? Math.ceil(totalDebt / bal) : 'N/A'}\n\n*Exchange Rate Used: 1 AED = INR ${exchangeRate.toFixed(2)}*`;
+            window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        };
+
+        window.generateReport = function() {
+            const activeEmis = appState.emis.filter(e => !e.foreclosed); const activeCCs = appState.creditCards.filter(c => !c.foreclosed);
+            const tEMIs = activeEmis.reduce((sum, item) => sum + item.amount, 0); const tVars = appState.expenses.reduce((sum, item) => sum + item.amount, 0); const netCCPayment = activeCCs.reduce((sum, c) => sum + (c.paid - c.withdraw), 0);
+            const tOutflow = appState.accommodation + appState.ccPayment + tEMIs + tVars + netCCPayment; const bal = appState.salary - tOutflow;
+            const totalDebt = activeEmis.reduce((sum, item) => sum + item.foreclose, 0) + activeCCs.reduce((sum, item) => sum + item.outstanding, 0);
+            const iciciAed = (appState.balances.icici || 0) / exchangeRate; const totalLiq = (appState.balances.cash || 0) + (appState.balances.rakbank || 0) + iciciAed;
+            
+            const monthName = new Date(currentMonthKey + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
+            document.getElementById('reportMonthDisp').innerText = monthName; document.getElementById('report-rate').innerText = `1 AED = ₹${exchangeRate.toFixed(2)}`;
+
+            document.getElementById('reportContent').innerHTML = `
+                <div class="grid grid-cols-2 gap-6 mb-8"><div class="glass bg-emerald-50/30 p-5 rounded-2xl border border-emerald-100"><p class="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-1">Total Income</p><p class="text-2xl font-bold text-emerald-800">${formatAED(appState.salary)}</p><p class="text-sm font-medium text-emerald-600/80">${formatINR(appState.salary)}</p></div><div class="glass bg-${bal >= 0 ? 'indigo' : 'rose'}-50/30 p-5 rounded-2xl border border-${bal >= 0 ? 'indigo' : 'rose'}-100"><p class="text-xs font-bold text-${bal >= 0 ? 'indigo' : 'rose'}-600 uppercase tracking-wider mb-1">Net Balance</p><p class="text-2xl font-bold text-${bal >= 0 ? 'indigo' : 'rose'}-800">${formatAED(bal)}</p><p class="text-sm font-medium text-${bal >= 0 ? 'indigo' : 'rose'}-600/80">${formatINR(bal)}</p></div></div>
+                <div class="mb-8 glass rounded-2xl overflow-hidden"><h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-0 p-5 border-b border-slate-200/50 bg-slate-50/50">Expense Breakdown</h3><table class="w-full text-slate-700">
+                    <tr class="border-b border-slate-100/50 hover:bg-white/50"><td class="py-4 px-5 font-medium">Accommodation</td><td class="py-4 px-5 text-right font-bold">${formatAED(appState.accommodation)}</td><td class="py-4 px-5 text-right text-slate-400 text-sm w-32">${formatINR(appState.accommodation)}</td></tr>
+                    ${appState.ccPayment > 0 ? `<tr class="border-b border-slate-100/50 hover:bg-white/50"><td class="py-4 px-5 font-medium">Extra Credit Card Payment</td><td class="py-4 px-5 text-right font-bold">${formatAED(appState.ccPayment)}</td><td class="py-4 px-5 text-right text-slate-400 text-sm">${formatINR(appState.ccPayment)}</td></tr>` : ''}
+                    <tr class="border-b border-slate-100/50 hover:bg-white/50"><td class="py-4 px-5 font-medium">Active Loans / EMIs <span class="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full ml-2">${activeEmis.length} items</span></td><td class="py-4 px-5 text-right font-bold">${formatAED(tEMIs)}</td><td class="py-4 px-5 text-right text-slate-400 text-sm">${formatINR(tEMIs)}</td></tr>
+                    <tr class="border-b border-slate-100/50 hover:bg-white/50"><td class="py-4 px-5 font-medium">Net Credit Card Payment<span class="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full ml-2">${activeCCs.length} cards</span></td><td class="py-4 px-5 text-right font-bold">${formatAED(netCCPayment)}</td><td class="py-4 px-5 text-right text-slate-400 text-sm">${formatINR(netCCPayment)}</td></tr>
+                    <tr class="border-b border-slate-100/50 hover:bg-white/50"><td class="py-4 px-5 font-medium">Variable / Daily Spend<span class="bg-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full ml-2">${appState.expenses.length} logs</span></td><td class="py-4 px-5 text-right font-bold">${formatAED(tVars)}</td><td class="py-4 px-5 text-right text-slate-400 text-sm">${formatINR(tVars)}</td></tr>
+                    <tr class="bg-slate-50"><td class="py-5 px-5 font-extrabold text-slate-800 uppercase tracking-wide text-sm">Total Outflow</td><td class="py-5 px-5 text-right font-extrabold text-rose-600 text-lg">${formatAED(tOutflow)}</td><td class="py-5 px-5 text-right font-bold text-rose-400 text-sm">${formatINR(tOutflow)}</td></tr>
+                </table></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="glass border border-emerald-200 p-6 rounded-2xl relative overflow-hidden bg-gradient-to-br from-emerald-50/50 to-white/50"><h3 class="font-bold text-emerald-900 flex items-center gap-2 mb-3 text-lg relative z-10"><i class="fas fa-piggy-bank text-emerald-500"></i> Liquid Balance</h3><div class="flex justify-between items-center relative z-10"><span class="text-slate-600 font-medium">Total Liquidity:</span><div class="text-right"><span class="font-bold text-emerald-700 text-xl block">${formatAED(totalLiq)}</span><span class="text-xs text-emerald-500 font-medium">${formatINR(totalLiq)}</span></div></div></div>
+                    <div class="glass border border-indigo-200 p-6 rounded-2xl relative overflow-hidden bg-gradient-to-br from-indigo-50/50 to-white/50"><h3 class="font-bold text-indigo-900 flex items-center gap-2 mb-3 text-lg relative z-10"><i class="fas fa-bullseye text-indigo-500"></i> Foreclosure Status</h3><div class="flex justify-between items-center mb-4 relative z-10"><span class="text-slate-600 font-medium">Target Debt Remaining:</span><div class="text-right"><span class="font-bold text-indigo-700 text-xl block">${formatAED(totalDebt)}</span><span class="text-xs text-indigo-400 font-medium">${formatINR(totalDebt)}</span></div></div>${bal > 0 ? `<div class="bg-white/60 p-3 rounded-xl border border-indigo-100 text-sm text-indigo-800 relative z-10">Debt-free in approx. <strong>${Math.ceil(totalDebt / bal)} months</strong> at current savings rate.</div>` : `<div class="bg-rose-50/80 p-3 rounded-xl border border-rose-100 text-sm text-rose-700 relative z-10 font-medium"><i class="fas fa-exclamation-circle mr-1"></i> No surplus balance this month.</div>`}</div>
+                </div>`;
+            document.getElementById('reportModal').classList.remove('hidden');
+        };
+
+        window.closeReport = function() { document.getElementById('reportModal').classList.add('hidden'); };
+
+    </script>
+</body>
+</html>
